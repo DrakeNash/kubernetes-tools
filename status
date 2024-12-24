@@ -1,0 +1,58 @@
+from kubernetes import client, config
+from prettytable import PrettyTable
+import os
+
+def obtener_top_pods():
+    """Obtiene información de los pods de todos los namespaces y crea una tabla."""
+
+    try:
+        # Carga la configuración desde el archivo kubeconfig. Asegúrate de que la ruta sea correcta. 
+        kubeconfig_path = os.path.join(os.path.expanduser("~"), ".kube", "kubeconfig")
+        try:
+            config.load_kube_config(kubeconfig_path)
+        except config.ConfigException:
+            print(f"Error al cargar la configuración desde {kubeconfig_path}. Asegúrate de que el archivo existe y es válido.")
+            return
+
+        # Crea un cliente de la API CoreV1.
+        v1 = client.CoreV1Api()
+
+        # Obtiene todos los namespaces.
+        namespaces = v1.list_namespace()
+
+        # Crea la tabla con PrettyTable.
+        tabla = PrettyTable()
+        tabla.field_names = ["Namespace", "Nombre del Pod", "Estado", "Reinicios"]
+
+        # Itera sobre los namespaces.
+        for namespace in namespaces.items:
+            try:
+                # Obtiene los pods del namespace actual.
+                pods = v1.list_namespaced_pod(namespace.metadata.name)
+
+                # Itera sobre los pods.
+                for pod in pods.items:
+                    nombre_pod = pod.metadata.name
+                    estado_pod = pod.status.phase
+                    reinicios = 0
+                    if pod.status.container_statuses:
+                        for container_status in pod.status.container_statuses:
+                            reinicios += container_status.restart_count
+                    tabla.add_row([namespace.metadata.name, nombre_pod, estado_pod, reinicios])
+            except client.rest.ApiException as e:
+                print(f"Error al obtener pods del namespace {namespace.metadata.name}: {e}")
+                continue # Continua con el siguiente namespace en caso de error
+
+        # Imprime la tabla.
+        print(tabla)
+
+    except config.ConfigException as e:
+        print(f"Error al cargar la configuración de Kubernetes: {e}")
+    except client.rest.ApiException as e:
+        print(f"Error en la API de Kubernetes: {e}")
+    except Exception as e:
+        print(f"Ocurrió un error inesperado: {e}")
+
+
+if __name__ == "__main__":
+    obtener_top_pods()
